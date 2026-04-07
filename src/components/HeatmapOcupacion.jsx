@@ -1,0 +1,467 @@
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
+
+const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+const DIAS_NUM = [1, 2, 3, 4, 5, 6, 0]
+
+// Layout constants
+const HOUR_HEIGHT = 64      // px per hour
+const START_HOUR = 7        // 07:00
+const END_HOUR = 22         // 22:00
+const TOTAL_HOURS = END_HOUR - START_HOUR
+const TOTAL_HEIGHT = TOTAL_HOURS * HOUR_HEIGHT
+
+function minutesToPx(minutes) {
+  return (minutes / 60) * HOUR_HEIGHT
+}
+
+function timeToMinutes(h, m) {
+  return (h - START_HOUR) * 60 + m
+}
+
+function getMondayOfWeek(date) {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function formatDate(date) {
+  return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+}
+
+function getMadridTime(utcDate) {
+  const d = new Date(utcDate)
+  const madridOffset = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Madrid' }))
+  const diff = madridOffset - new Date(d.toLocaleString('en-US', { timeZone: 'UTC' }))
+  return new Date(d.getTime() + diff)
+}
+
+function getOccupancyColor(pct) {
+  if (pct < 25) return { bg: 'rgba(30,58,138,0.85)', border: '#1e3a8a', text: '#93c5fd' }
+  if (pct < 50) return { bg: 'rgba(29,78,216,0.85)', border: '#1d4ed8', text: '#bfdbfe' }
+  if (pct < 70) return { bg: 'rgba(37,99,235,0.9)', border: '#2563eb', text: '#dbeafe' }
+  if (pct < 85) return { bg: 'rgba(109,40,217,0.9)', border: '#6d28d9', text: '#e9d5ff' }
+  if (pct < 95) return { bg: 'rgba(124,58,237,0.9)', border: '#7c3aed', text: '#ede9fe' }
+  return { bg: 'rgba(192,38,211,0.9)', border: '#c026d3', text: '#fce7f3' }
+}
+
+// Detect overlapping events and assign column layout
+function overlaps(a, b) {
+  return a.startMin < b.startMin + b.duration && a.startMin + a.duration > b.startMin
+}
+
+function layoutEvents(events) {
+  if (!events.length) return []
+
+  // Sort by start time
+  const sorted = [...events].sort((a, b) => a.startMin - b.startMin)
+
+  // Step 1: assign columns greedily
+  // columns[i] = array of events placed in column i
+  const columns = []
+  const result = sorted.map(event => ({ ...event, col: 0, totalCols: 1 }))
+
+  for (const ev of result) {
+    let placed = false
+    for (let col = 0; col < columns.length; col++) {
+      // Check against ALL events in this column, not just the last
+      const collidesWithCol = columns[col].some(other => overlaps(ev, other))
+      if (!collidesWithCol) {
+        columns[col].push(ev)
+        ev.col = col
+        placed = true
+        break
+      }
+    }
+    if (!placed) {
+      ev.col = columns.length
+      columns.push([ev])
+    }
+  }
+
+  // Step 2: find connected overlap groups using union-find style BFS
+  // All events that are transitively connected via overlaps share the same totalCols
+  const visited = new Set()
+
+  for (let i = 0; i < result.length; i++) {
+    if (visited.has(i)) continue
+
+    // BFS to find all events in this overlap group
+    const group = []
+    const queue = [i]
+    visited.add(i)
+
+    while (queue.length) {
+      const idx = queue.shift()
+      group.push(idx)
+      for (let j = 0; j < result.length; j++) {
+        if (!visited.has(j) && overlaps(result[idx], result[j])) {
+          visited.add(j)
+          queue.push(j)
+        }
+      }
+    }
+
+    // totalCols for the group = max col index in group + 1
+    const maxCol = Math.max(...group.map(idx => result[idx].col))
+    const totalCols = maxCol + 1
+    group.forEach(idx => { result[idx].totalCols = totalCols })
+  }
+
+  return result
+}
+
+export default function HeatmapOcupacion({ branchId }) {
+  const [classesData, setClassesData] = useState([])
+  const [allClassNames, setAllClassNames] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [instructors, setInstructors] = useState([])
+  const [selectedInstructor, setSelectedInstructor] = useState('')
+  const [selectedClassName, setSelectedClassName] = useState('')
+  const [weekStart, setWeekStart] = useState(() => getMondayOfWeek(new Date()))
+  const [tooltip, setTooltip] = useState(null)
+  const scrollRef = useRef(null)
+
+  useEffect(() => {
+    setSelectedInstructor('')
+    setSelectedClassName('')
+  }, [branchId])
+
+  useEffect(() => {
+    fetchData()
+  }, [branchId, selectedInstructor, weekStart])
+
+  // Scroll to 7:00 on mount
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0
+    }
+  }, [])
+
+  const columnDates = DIAS_NUM.map(dayNum => {
+    const d = new Date(weekStart)
+    const offset = dayNum === 0 ? 6 : dayNum - 1
+    d.setDate(d.getDate() + offset)
+    return d
+  })
+
+  async function fetchData() {
+    setLoading(true)
+
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekEnd.getDate() + 7)
+
+    let allClasses = []
+    let from = 0
+    const pageSize = 1000
+
+    while (true) {
+      let query = supabase
+        .from('classes')
+        .select('scheduled_at, booked_count, capacity, trainer_id, name, branch_id, duration_min, event_id')
+        .gte('scheduled_at', weekStart.toISOString())
+        .lt('scheduled_at', weekEnd.toISOString())
+        .gt('capacity', 0)
+        .range(from, from + pageSize - 1)
+
+      if (branchId) query = query.eq('branch_id', branchId)
+      if (selectedInstructor) query = query.eq('trainer_id', selectedInstructor)
+
+      const { data: classes } = await query
+      if (!classes || classes.length === 0) break
+      allClasses = [...allClasses, ...classes]
+      if (classes.length < pageSize) break
+      from += pageSize
+    }
+
+    let staffQuery = supabase
+      .from('staff')
+      .select('glofox_user_id, name')
+      .order('name')
+    if (branchId) staffQuery = staffQuery.eq('branch_id', branchId)
+    const { data: staff } = await staffQuery
+
+    const uniqueStaff = [...new Map((staff || []).map(s => [s.glofox_user_id, s])).values()]
+    const staffMap = {}
+    uniqueStaff.forEach(s => { staffMap[s.glofox_user_id] = s.name })
+    setInstructors(uniqueStaff)
+
+    // Group by day, then layout overlapping events per day
+    const byDay = {}
+    DIAS_NUM.forEach(d => { byDay[d] = [] })
+
+    allClasses.forEach(c => {
+      const madridTime = getMadridTime(c.scheduled_at)
+      const dayNum = madridTime.getUTCDay()
+      const h = madridTime.getUTCHours()
+      const m = madridTime.getUTCMinutes()
+      const startMin = timeToMinutes(h, m)
+      const duration = c.duration_min || 50
+
+      // Skip classes outside our display range
+      if (h < START_HOUR || h >= END_HOUR) return
+
+      const pct = c.capacity > 0 ? Math.round((c.booked_count / c.capacity) * 100) : 0
+
+      byDay[dayNum].push({
+        id: `${c.scheduled_at}_${c.trainer_id || 'x'}_${c.name || 'x'}`,
+        startMin,
+        duration,
+        h,
+        m,
+        pct,
+        booked: c.booked_count || 0,
+        capacity: c.capacity,
+        name: c.name || '',
+        trainerName: staffMap[c.trainer_id] || '',
+        scheduledAt: c.scheduled_at,
+      })
+    })
+
+    // Apply layout algorithm per day
+    const laid = {}
+    DIAS_NUM.forEach(dayNum => {
+      laid[dayNum] = layoutEvents(byDay[dayNum])
+    })
+
+    // Collect unique class names for filter
+    const names = [...new Set(allClasses.map(c => c.name).filter(Boolean))].sort()
+    setAllClassNames(names)
+    setClassesData(laid)
+    setLoading(false)
+  }
+
+  function prevWeek() {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() - 7)
+    setWeekStart(d)
+  }
+  function nextWeek() {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + 7)
+    setWeekStart(d)
+  }
+  function thisWeek() {
+    setWeekStart(getMondayOfWeek(new Date()))
+  }
+
+  // Hour labels for Y axis
+  const hourLabels = []
+  for (let h = START_HOUR; h <= END_HOUR; h++) {
+    hourLabels.push(`${String(h).padStart(2, '0')}:00`)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <button onClick={prevWeek} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white text-sm rounded-lg px-3 py-2">← Anterior</button>
+          <button onClick={thisWeek} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white text-sm rounded-lg px-3 py-2">Hoy</button>
+          <button onClick={nextWeek} className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white text-sm rounded-lg px-3 py-2">Siguiente →</button>
+          <span className="text-sm text-gray-400 ml-2">
+            {formatDate(columnDates[0])} — {formatDate(columnDates[6])}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-400">Clase:</span>
+            <select
+              value={selectedClassName}
+              onChange={e => setSelectedClassName(e.target.value)}
+              className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 max-w-52"
+            >
+              <option value="">Todas</option>
+              {allClassNames.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-400">Instructor:</span>
+            <select
+              value={selectedInstructor}
+              onChange={e => setSelectedInstructor(e.target.value)}
+              className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
+            >
+              <option value="">Todos</option>
+              {instructors.map(i => (
+                <option key={i.glofox_user_id} value={i.glofox_user_id}>{i.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Cargando datos...</div>
+      ) : (
+        <div className="rounded-xl border border-gray-800">
+          {/* Day headers — sticky */}
+          <div className="grid border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20"
+            style={{ gridTemplateColumns: '52px repeat(7, 1fr)' }}>
+            <div className="border-r border-gray-800" />
+            {DIAS.map((d, i) => {
+              const isToday = columnDates[i].toDateString() === new Date().toDateString()
+              return (
+                <div key={d} className={`text-center py-2 px-1 border-r border-gray-800 last:border-r-0 ${isToday ? 'bg-purple-900/20' : ''}`}>
+                  <div className={`text-xs font-semibold uppercase tracking-wider ${isToday ? 'text-purple-400' : 'text-gray-400'}`}>{d}</div>
+                  <div className={`text-xs mt-0.5 ${isToday ? 'text-purple-300 font-medium' : 'text-gray-500'}`}>{formatDate(columnDates[i])}</div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Scrollable calendar body */}
+          <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: '600px' }}>
+            <div className="grid" style={{ gridTemplateColumns: '52px repeat(7, 1fr)' }}>
+
+              {/* Y-axis hour labels */}
+              <div className="border-r border-gray-800 relative" style={{ height: TOTAL_HEIGHT }}>
+                {hourLabels.map((label, i) => (
+                  <div
+                    key={label}
+                    className="absolute right-2 text-xs text-gray-600 -translate-y-2"
+                    style={{ top: i * HOUR_HEIGHT }}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              {/* Day columns */}
+              {DIAS_NUM.map((dayNum, colIdx) => {
+                const rawEvents = classesData[dayNum] || []
+                const filteredRaw = selectedClassName ? rawEvents.filter(ev => ev.name === selectedClassName) : rawEvents
+                // Re-run layout after filtering so col/totalCols are correct for the filtered set
+                const events = selectedClassName ? layoutEvents(filteredRaw) : filteredRaw
+                const isToday = columnDates[colIdx].toDateString() === new Date().toDateString()
+
+                return (
+                  <div
+                    key={dayNum}
+                    className={`relative border-r border-gray-800 last:border-r-0 ${isToday ? 'bg-purple-900/5' : ''}`}
+                    style={{ height: TOTAL_HEIGHT }}
+                  >
+                    {/* Hour grid lines */}
+                    {hourLabels.map((_, i) => (
+                      <div
+                        key={i}
+                        className="absolute left-0 right-0 border-t border-gray-800/60"
+                        style={{ top: i * HOUR_HEIGHT }}
+                      />
+                    ))}
+                    {/* Half-hour lines */}
+                    {hourLabels.slice(0, -1).map((_, i) => (
+                      <div
+                        key={`half_${i}`}
+                        className="absolute left-0 right-0 border-t border-gray-800/30"
+                        style={{ top: i * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
+                      />
+                    ))}
+
+                    {/* Events */}
+                    {events.map(ev => {
+                      const top = minutesToPx(ev.startMin)
+                      const height = Math.max(minutesToPx(ev.duration), 20)
+                      const colors = getOccupancyColor(ev.pct)
+                      const colWidth = 100 / ev.totalCols
+                      const left = ev.col * colWidth
+                      const endH = Math.floor((START_HOUR * 60 + ev.startMin + ev.duration) / 60)
+                      const endM = (START_HOUR * 60 + ev.startMin + ev.duration) % 60
+                      const timeLabel = `${String(START_HOUR + Math.floor(ev.startMin / 60)).padStart(2,'0')}:${String(ev.startMin % 60).padStart(2,'0')} - ${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`
+
+                      return (
+                        <div
+                          key={ev.id}
+                          className="absolute rounded overflow-hidden cursor-pointer transition-all duration-150 hover:brightness-110 hover:z-10 hover:shadow-lg"
+                          style={{
+                            top: top + 1,
+                            height: height - 2,
+                            left: `calc(${left}% + 2px)`,
+                            width: `calc(${colWidth}% - 4px)`,
+                            background: colors.bg,
+                            borderLeft: `3px solid ${colors.border}`,
+                            zIndex: 5,
+                          }}
+                          onMouseEnter={(e) => setTooltip({
+                            ev,
+                            timeLabel,
+                            x: e.clientX,
+                            y: e.clientY
+                          })}
+                          onMouseLeave={() => setTooltip(null)}
+                        >
+                          <div className="px-1.5 py-1 h-full flex flex-col justify-start overflow-hidden">
+                            {height >= 18 && (
+                              <p className="text-xs font-semibold leading-tight truncate" style={{ color: colors.text }}>
+                                {ev.name}
+                              </p>
+                            )}
+                            {height >= 34 && (
+                              <p className="text-xs leading-tight opacity-80 truncate" style={{ color: colors.text }}>
+                                {timeLabel}
+                              </p>
+                            )}
+                            {height >= 48 && ev.trainerName && (
+                              <p className="text-xs leading-tight opacity-70 truncate" style={{ color: colors.text }}>
+                                {ev.trainerName}
+                              </p>
+                            )}
+                            {height >= 56 && (
+                              <p className="text-xs font-bold mt-auto" style={{ color: colors.text }}>
+                                {ev.pct}%
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="flex items-center gap-2 text-xs text-gray-500">
+        <span>Ocupación:</span>
+        {[
+          { label: '<25%', bg: '#1e3a8a' },
+          { label: '<50%', bg: '#1d4ed8' },
+          { label: '<70%', bg: '#2563eb' },
+          { label: '<85%', bg: '#6d28d9' },
+          { label: '<95%', bg: '#7c3aed' },
+          { label: '100%', bg: '#c026d3' },
+        ].map(({ label, bg }) => (
+          <div key={label} className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm" style={{ background: bg }} />
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          className="fixed z-50 bg-gray-900 border border-gray-700 rounded-xl p-3 text-sm shadow-2xl pointer-events-none min-w-48"
+          style={{ left: tooltip.x + 14, top: tooltip.y - 120 }}
+        >
+          <p className="font-semibold text-white mb-1.5">{tooltip.ev.name || 'Clase'}</p>
+          <p className="text-gray-400 text-xs mb-1">{tooltip.timeLabel} · {tooltip.ev.duration} min</p>
+          <div className="border-t border-gray-800 my-1.5" />
+          <p className="text-gray-300">Ocupación: <span className="text-white font-semibold">{tooltip.ev.pct}%</span></p>
+          <p className="text-gray-300">Reservas: <span className="text-white">{tooltip.ev.booked} / {tooltip.ev.capacity}</span></p>
+          {tooltip.ev.trainerName && (
+            <p className="text-gray-300">Instructor: <span className="text-white">{tooltip.ev.trainerName}</span></p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
