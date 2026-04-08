@@ -31,7 +31,16 @@ export function AuthProvider({ children }) {
 
   async function fetchProfile() {
     const { data, error } = await supabase.rpc('get_my_profile')
-    if (!error && data) setProfile(data)
+    if (!error && data) {
+      setProfile(data)
+      // Si el usuario acaba de aceptar la invitación, marcar como activo
+      if (data.status === 'pending') {
+        await supabase
+          .from('user_profiles')
+          .update({ status: 'active' })
+          .eq('id', (await supabase.auth.getUser()).data.user?.id)
+      }
+    }
     setLoading(false)
   }
 

@@ -91,7 +91,7 @@ export default function AdminUsuarios() {
     setLoading(true)
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('*')
+      .select('id, email, full_name, role, branch_ids, status')
       .order('created_at', { ascending: false })
     if (!error) setUsuarios(data || [])
     setLoading(false)
@@ -218,7 +218,7 @@ export default function AdminUsuarios() {
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-medium text-white truncate">{u.full_name || '—'}</p>
                   <span className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${
                     u.role === 'admin'
@@ -227,6 +227,11 @@ export default function AdminUsuarios() {
                   }`}>
                     {u.role === 'admin' ? 'Admin' : 'Manager'}
                   </span>
+                  {u.status === 'pending' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full border shrink-0 bg-amber-900/30 border-amber-700 text-amber-400">
+                      ⏳ Pendiente de aceptar
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 truncate mt-0.5">{u.email}</p>
                 {u.role === 'manager' && (
