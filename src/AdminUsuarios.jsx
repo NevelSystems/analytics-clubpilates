@@ -157,15 +157,26 @@ export default function AdminUsuarios() {
 
   async function handleDelete() {
     setSaving(true)
-    const { error } = await supabase
-      .from('user_profiles')
-      .delete()
-      .eq('id', selected.id)
-    if (error) showToast('Error al eliminar: ' + error.message, 'error')
-    else {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('No hay sesión activa')
+
+      const response = await fetch('https://kvcmjajatbvirespgcvs.supabase.co/functions/v1/delete-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': 'sb_publishable_V0OSsUPhE-bhyhcY63FXKw_vMyQVXOr',
+        },
+        body: JSON.stringify({ userId: selected.id })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Error al eliminar')
       showToast('Usuario eliminado')
       setModal(null)
       fetchUsuarios()
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error')
     }
     setSaving(false)
   }
