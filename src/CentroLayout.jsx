@@ -70,7 +70,7 @@ export default function CentroLayout() {
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
           {/* Logo */}
           <div className="flex items-center shrink-0">
-            <img src={logo} alt="Club Pilates España" className="h-12 w-auto" />
+            <img src={logo} alt="Club Pilates España" className="h-20 w-auto" />
           </div>
 
           {/* Centro selector */}
