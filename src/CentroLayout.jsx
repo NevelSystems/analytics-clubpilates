@@ -67,10 +67,10 @@ export default function CentroLayout() {
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* Top navbar */}
       <header className="border-b border-gray-800 bg-gray-950 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-6 h-25 flex items-center justify-between gap-4">
           {/* Logo */}
           <div className="flex items-center shrink-0">
-            <img src={logo} alt="Club Pilates España" className="h-30 w-auto" />
+            <img src={logo} alt="Club Pilates España" className="h-35 w-auto" />
           </div>
 
           {/* Centro selector */}
@@ -108,7 +108,7 @@ export default function CentroLayout() {
 
       <div className="flex flex-1 max-w-7xl mx-auto w-full">
         {/* Sidebar */}
-        <aside className="w-52 shrink-0 border-r border-gray-800 py-6 px-3 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto">
+        <aside className="w-52 shrink-0 border-r border-gray-800 py-6 px-3 sticky top-30 h-[calc(100vh-3.5rem)] overflow-y-auto">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 px-3 mb-3">Métricas</p>
           <nav className="space-y-0.5">
             {NAV_ITEMS.map(item => (
