@@ -70,6 +70,14 @@ function AdminRootRedirect() {
 function AppRoutes() {
   const { user, loading, isAdmin, allowedBranchIds } = useAuth()
 
+// Detectar token de invitación en el hash
+useEffect(() => {
+  const hash = window.location.hash
+  if (hash.includes('type=invite') || hash.includes('type=signup')) {
+    window.location.replace('/set-password' + hash)
+  }
+}, [])
+
   if (loading) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
@@ -80,6 +88,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/set-password" element={<ResetPassword isInvite />} />
 
       <Route path="/" element={
         <ProtectedRoute>

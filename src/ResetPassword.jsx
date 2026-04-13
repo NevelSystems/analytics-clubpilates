@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 
-export default function ResetPassword() {
+export default function ResetPassword({ isInvite = false }) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
@@ -10,10 +10,9 @@ export default function ResetPassword() {
   const [done, setDone] = useState(false)
   const navigate = useNavigate()
 
-  // Supabase pone el token en el hash — hay que esperar a que lo procese
   useEffect(() => {
     supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
         // listo para cambiar contraseña
       }
     })
@@ -44,7 +43,9 @@ export default function ResetPassword() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-white">Establecer contraseña</h1>
+          <h1 className="text-2xl font-bold text-white">
+            {isInvite ? 'Configura tu contraseña' : 'Restablecer contraseña'}
+          </h1>
           <p className="text-gray-400 text-sm mt-1">Club Pilates España · Analytics</p>
         </div>
 
