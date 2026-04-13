@@ -22,8 +22,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <img src={logo} alt="Club Pilates España" className="h-24 w-auto mx-auto mb-6" />
-          <p className="text-gray-400 text-sm mt-1">Panel de Analytics</p>
+          <img src={logo} alt="Club Pilates España" className="h-45 w-auto mx-auto mb-6" />
+          <p className="text-gray-400 text-sm mt-1"></p>
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
