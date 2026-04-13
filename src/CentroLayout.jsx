@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import { supabase } from './lib/supabase'
+import logo from './assets/logo-clubpilates.png'
 
 const NAV_ITEMS = [
   { id: 'ocupacion', label: 'Ocupación', icon: (
@@ -56,7 +57,6 @@ export default function CentroLayout() {
     }
   }
 
-  // Verificar acceso
   useEffect(() => {
     if (!isAdmin && allowedBranchIds.length > 0 && !allowedBranchIds.includes(branchId)) {
       navigate(`/centro/${allowedBranchIds[0]}`)
@@ -69,16 +69,11 @@ export default function CentroLayout() {
       <header className="border-b border-gray-800 bg-gray-950 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
           {/* Logo */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <span className="font-semibold text-sm text-white hidden sm:block">Club Pilates España</span>
+          <div className="flex items-center shrink-0">
+            <img src={logo} alt="Club Pilates España" className="h-9 w-auto" />
           </div>
 
-          {/* Centro selector (admin ve todos, manager solo los suyos) */}
+          {/* Centro selector */}
           <div className="flex items-center gap-2 flex-1 max-w-xs">
             {(isAdmin ? allBranches : allBranches.filter(b => allowedBranchIds.includes(b.branch_id))).length > 1 ? (
               <select
@@ -134,7 +129,6 @@ export default function CentroLayout() {
             ))}
           </nav>
 
-          {/* Admin: sección de administración */}
           {isAdmin && (
             <div className="mt-6">
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 px-3 mb-3">Administración</p>
@@ -159,7 +153,6 @@ export default function CentroLayout() {
             </div>
           )}
 
-          {/* Admin: acceso rápido a otros centros */}
           {isAdmin && allBranches.length > 0 && (
             <div className="mt-8">
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 px-3 mb-3">Centros</p>
