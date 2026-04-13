@@ -95,7 +95,7 @@ export default function CentroLayout() {
             {isAdmin && (
               <span className="text-xs bg-purple-900/50 border border-purple-700 text-purple-300 px-2 py-0.5 rounded-full">Admin</span>
             )}
-            <span className="text-xs text-gray-400 hidden sm:block">{profile?.email}</span>
+            <span className="text-xs text-gray-400 hidden sm:block">{profile?.name}</span>
             <button
               onClick={signOut}
               className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-800"
