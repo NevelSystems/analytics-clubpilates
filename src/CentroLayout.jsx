@@ -75,7 +75,7 @@ export default function CentroLayout() {
 
           {/* Centro selector */}
           <div className="flex items-center gap-2 flex-1 max-w-xs">
-            {(isAdmin ? allBranches : allBranches.filter(b => allowedBranchIds.includes(b.branch_id))).length > 1 ? (
+            {(isAdmin ? allBranches : allBranches.filter(b => allowedBranchIds.includes(b.branch_id))).length >= 1 ? (
               <select
                 value={branchId}
                 onChange={e => navigate(`/centro/${e.target.value}`)}
