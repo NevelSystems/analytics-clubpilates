@@ -19,8 +19,8 @@ export default function Laserr({ branchId }) {
     setLoading(true)
     setStats(null)
 
-    const fromISO = new Date(dateFrom + 'T00:00:00').toISOString()
-    const toISO = new Date(dateTo + 'T23:59:59').toISOString()
+    const fromISO = dateFrom + 'T00:00:00+00:00'
+    const toISO = dateTo + 'T23:59:59+00:00'
 
     // 1. Leads totales creados en el rango
     const { data: leads } = await supabase
@@ -72,7 +72,6 @@ export default function Laserr({ branchId }) {
         noCompraron++
         return
       }
-      // Es MEMBER — ver cuándo compró vs cuándo fue a la clase
       const booking = asistidosBookings.find(b => b.user_id === userId)
       const claseDate = booking ? new Date(booking.time_start).toDateString() : null
       const compraDate = member.membership_start_date ? new Date(member.membership_start_date).toDateString() : null
@@ -150,7 +149,6 @@ export default function Laserr({ branchId }) {
 
   return (
     <div>
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-bold text-white">Laserr</h2>
@@ -158,7 +156,6 @@ export default function Laserr({ branchId }) {
         </div>
       </div>
 
-      {/* Filtros de fecha */}
       <div className="flex items-center gap-3 mb-8">
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-400">Desde</label>
@@ -187,7 +184,6 @@ export default function Laserr({ branchId }) {
         </button>
       </div>
 
-      {/* Funnel */}
       {loading && (
         <div className="flex items-center justify-center py-20">
           <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
@@ -221,7 +217,6 @@ export default function Laserr({ branchId }) {
             </div>
           ))}
 
-          {/* Resumen conversión total */}
           <div className="mt-6 bg-gray-900 border border-purple-800/40 rounded-xl p-4">
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Conversión total</p>
             <div className="flex items-center gap-8">
