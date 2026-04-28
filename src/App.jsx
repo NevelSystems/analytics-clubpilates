@@ -4,11 +4,11 @@ import { AuthProvider, useAuth } from './AuthContext'
 import LoginPage from './LoginPage'
 import CentroLayout from './CentroLayout'
 import HeatmapOcupacion from './components/HeatmapOcupacion'
+import Laserr from './components/Laserr'
 import ComingSoon from './ComingSoon'
 import ResetPassword from './ResetPassword'
 import AdminUsuarios from './AdminUsuarios'
 
-// Ruta protegida — redirige a login si no hay sesión
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return (
@@ -20,7 +20,6 @@ function ProtectedRoute({ children }) {
   return children
 }
 
-// Redirect inicial: manda al primer centro permitido
 function RootRedirect() {
   const { isAdmin, allowedBranchIds, loading } = useAuth()
   const navigate = useNavigate()
@@ -28,8 +27,6 @@ function RootRedirect() {
   useEffect(() => {
     if (loading) return
     if (isAdmin || allowedBranchIds.length > 0) {
-      // Admin: Supabase devolverá branches según RLS; usamos el primero disponible
-      // Manager: primer centro asignado
       const firstBranch = allowedBranchIds[0]
       if (firstBranch) navigate(`/centro/${firstBranch}/ocupacion`, { replace: true })
     }
@@ -42,7 +39,6 @@ function RootRedirect() {
   )
 }
 
-// Admin redirect: necesita cargar branches primero
 function AdminRootRedirect() {
   const { isAdmin, loading } = useAuth()
   const navigate = useNavigate()
@@ -50,7 +46,6 @@ function AdminRootRedirect() {
   useEffect(() => {
     if (loading) return
     if (isAdmin) {
-      // Admin no tiene branch_ids, cargamos el primero de Supabase
       import('./lib/supabase').then(({ supabase }) => {
         supabase.from('branches').select('branch_id').order('name').limit(1)
           .then(({ data }) => {
@@ -70,13 +65,12 @@ function AdminRootRedirect() {
 function AppRoutes() {
   const { user, loading, isAdmin, allowedBranchIds } = useAuth()
 
-// Detectar token de invitación en el hash
-useEffect(() => {
-  const hash = window.location.hash
-  if (hash.includes('type=invite') || hash.includes('type=signup')) {
-    window.location.replace('/set-password' + hash)
-  }
-}, [])
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.includes('type=invite') || hash.includes('type=signup')) {
+      window.location.replace('/set-password' + hash)
+    }
+  }, [])
 
   if (loading) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -104,6 +98,7 @@ useEffect(() => {
         <Route path="instructores" element={<ComingSoon titulo="Ranking de Instructores" />} />
         <Route path="miembros" element={<ComingSoon titulo="Métricas de Miembros" />} />
         <Route path="retencion" element={<ComingSoon titulo="Retención y Churn" />} />
+        <Route path="laserr" element={<LaserrPage />} />
         <Route path="usuarios" element={<AdminUsuariosPage />} />
       </Route>
 
@@ -112,7 +107,6 @@ useEffect(() => {
   )
 }
 
-// Wrapper para pasar branchId al heatmap desde los params
 function OcupacionPage() {
   const { branchId } = useParams()
   return (
@@ -121,6 +115,11 @@ function OcupacionPage() {
       <HeatmapOcupacion branchId={branchId} />
     </div>
   )
+}
+
+function LaserrPage() {
+  const { branchId } = useParams()
+  return <Laserr branchId={branchId} />
 }
 
 function AdminUsuariosPage() {
