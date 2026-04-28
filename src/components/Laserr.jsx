@@ -45,6 +45,12 @@ export default function Laserr({ branchId }) {
       .gte('time_start', fromISO)
       .lte('time_start', toISO)
 
+      console.log('leads:', leads?.length, leads?.[0])
+      console.log('bookings:', bookings?.length, bookings?.[0])
+      console.log('allMembers:', allMembers?.length)
+      console.log('branchId:', branchId)
+      console.log('fromISO:', fromISO, 'toISO:', toISO)
+
     if (!leads || !bookings || !allMembers) {
       setLoading(false)
       return
