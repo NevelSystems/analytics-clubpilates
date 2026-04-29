@@ -5,6 +5,11 @@ const today = new Date()
 const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
 const todayStr = today.toISOString().split('T')[0]
 
+const toMadridDate = (iso) => {
+  const d = new Date(iso)
+  return new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Madrid' })).toDateString()
+}
+
 export default function Laserr({ branchId }) {
   const [dateFrom, setDateFrom] = useState(firstOfMonth)
   const [dateTo, setDateTo] = useState(todayStr)
@@ -22,22 +27,13 @@ export default function Laserr({ branchId }) {
     const fromISO = dateFrom + 'T00:00:00+00:00'
     const toISO = dateTo + 'T23:59:59+00:00'
 
-    // 1. Leads totales creados en el rango
     const { data: leads } = await supabase
-    .from('members')
-    .select('glofox_member_id, status, membership_start_date')
-    .eq('branch_id', branchId)
-    .gte('created_at', fromISO)
-    .lte('created_at', toISO)
+      .from('members')
+      .select('glofox_member_id')
+      .eq('branch_id', branchId)
+      .gte('created_at', fromISO)
+      .lte('created_at', toISO)
 
-    // 2. Todos los miembros del centro (para cruzar con bookings)
-    const { data: allMembers } = await supabase
-    .from('members')
-    .select('glofox_member_id, status, membership_start_date')
-    .eq('branch_id', branchId)
-    .limit(10000)
-
-    // 3. Bookings de clases intro del centro en el rango
     const { data: bookings } = await supabase
       .from('bookings')
       .select('glofox_booking_id, user_id, attended, time_start')
@@ -45,46 +41,53 @@ export default function Laserr({ branchId }) {
       .gte('time_start', fromISO)
       .lte('time_start', toISO)
 
-      console.log('leads:', leads?.length, leads?.[0])
-      console.log('bookings:', bookings?.length, bookings?.[0])
-      console.log('allMembers:', allMembers?.length)
-      console.log('branchId:', branchId)
-      console.log('fromISO:', fromISO, 'toISO:', toISO)
+    console.log('leads:', leads?.length)
+    console.log('bookings:', bookings?.length, bookings?.[0])
 
-    if (!leads || !bookings || !allMembers) {
+    if (!leads || !bookings) {
       setLoading(false)
       return
     }
 
-    // Mapa de miembros por glofox_member_id
-    const membersMap = {}
-    allMembers.forEach(m => { membersMap[m.glofox_member_id] = m })
+    const bookingUserIds = [...new Set(bookings.map(b => b.user_id))]
+    console.log('bookingUserIds:', bookingUserIds.length, bookingUserIds)
 
-    // Apuntados a intro (user_id único en bookings)
+    let membersMap = {}
+
+    if (bookingUserIds.length > 0) {
+      const { data: bookingMembers, error } = await supabase
+        .from('members')
+        .select('glofox_member_id, status, membership_start_date')
+        .in('glofox_member_id', bookingUserIds)
+        .eq('branch_id', branchId)
+
+      console.log('bookingMembers:', bookingMembers?.length, bookingMembers, 'error:', error)
+
+      if (bookingMembers) {
+        bookingMembers.forEach(m => { membersMap[m.glofox_member_id] = m })
+      }
+    }
+
+    console.log('membersMap keys:', Object.keys(membersMap).length)
+
     const apuntadosIds = [...new Set(bookings.map(b => b.user_id))]
-
-    // Asistidos
     const asistidosBookings = bookings.filter(b => b.attended === true)
     const asistidosIds = [...new Set(asistidosBookings.map(b => b.user_id))]
 
-    // Para cada asistido, buscar si compró y cuándo
+    console.log('asistidosIds:', asistidosIds.length)
+    asistidosIds.forEach(uid => console.log(uid, '->', membersMap[uid]?.status, membersMap[uid]?.membership_start_date))
+
     let compraronEnMomento = 0
     let compraronDespues = 0
     let noCompraron = 0
 
-    console.log('asistidosIds:', asistidosIds)
-    asistidosIds.forEach(uid => console.log(uid, '->', membersMap[uid]?.status))
     asistidosIds.forEach(userId => {
       const member = membersMap[userId]
-      if (!member || member.status === 'LEAD') {
+      if (!member || member.status !== 'MEMBER') {
         noCompraron++
         return
       }
       const booking = asistidosBookings.find(b => b.user_id === userId)
-      const toMadridDate = (iso) => {
-        const d = new Date(iso)
-        return new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Madrid' })).toDateString()
-      }
       const claseDate = booking ? toMadridDate(booking.time_start) : null
       const compraDate = member.membership_start_date ? toMadridDate(member.membership_start_date) : null
 
@@ -113,48 +116,12 @@ export default function Laserr({ branchId }) {
   }
 
   const steps = stats ? [
-    {
-      label: 'Leads totales',
-      value: stats.leads,
-      pct: null,
-      color: 'bg-blue-500',
-      desc: 'Nuevos leads en el período'
-    },
-    {
-      label: 'Apuntados a intro',
-      value: stats.apuntados,
-      pct: pct(stats.apuntados, stats.leads),
-      color: 'bg-indigo-500',
-      desc: 'Reservaron clase de introducción'
-    },
-    {
-      label: 'Asistieron',
-      value: stats.asistidos,
-      pct: pct(stats.asistidos, stats.apuntados),
-      color: 'bg-violet-500',
-      desc: 'Asistieron a la clase'
-    },
-    {
-      label: 'Compraron en el momento',
-      value: stats.compraronEnMomento,
-      pct: pct(stats.compraronEnMomento, stats.asistidos),
-      color: 'bg-green-500',
-      desc: 'Membresía el mismo día de la clase'
-    },
-    {
-      label: 'Compraron después',
-      value: stats.compraronDespues,
-      pct: pct(stats.compraronDespues, stats.asistidos),
-      color: 'bg-emerald-400',
-      desc: 'Membresía en días posteriores'
-    },
-    {
-      label: 'No compraron',
-      value: stats.noCompraron,
-      pct: pct(stats.noCompraron, stats.asistidos),
-      color: 'bg-red-500',
-      desc: 'Asistieron pero siguen como lead'
-    },
+    { label: 'Leads totales', value: stats.leads, pct: null, color: 'bg-blue-500', desc: 'Nuevos leads en el período' },
+    { label: 'Apuntados a intro', value: stats.apuntados, pct: pct(stats.apuntados, stats.leads), color: 'bg-indigo-500', desc: 'Reservaron clase de introducción' },
+    { label: 'Asistieron', value: stats.asistidos, pct: pct(stats.asistidos, stats.apuntados), color: 'bg-violet-500', desc: 'Asistieron a la clase' },
+    { label: 'Compraron en el momento', value: stats.compraronEnMomento, pct: pct(stats.compraronEnMomento, stats.asistidos), color: 'bg-green-500', desc: 'Membresía el mismo día de la clase' },
+    { label: 'Compraron después', value: stats.compraronDespues, pct: pct(stats.compraronDespues, stats.asistidos), color: 'bg-emerald-400', desc: 'Membresía en días posteriores' },
+    { label: 'No compraron', value: stats.noCompraron, pct: pct(stats.noCompraron, stats.asistidos), color: 'bg-red-500', desc: 'Asistieron pero no compraron membresía' },
   ] : []
 
   const maxVal = stats ? Math.max(stats.leads, 1) : 1
