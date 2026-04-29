@@ -71,6 +71,8 @@ export default function Laserr({ branchId }) {
     let compraronDespues = 0
     let noCompraron = 0
 
+    console.log('asistidosIds:', asistidosIds)
+asistidosIds.forEach(uid => console.log(uid, '->', membersMap[uid]?.status))
     asistidosIds.forEach(userId => {
       const member = membersMap[userId]
       if (!member || member.status === 'LEAD') {
