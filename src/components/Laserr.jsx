@@ -24,12 +24,11 @@ export default function Laserr({ branchId }) {
 
     // 1. Leads totales creados en el rango
     const { data: leads } = await supabase
-      .from('members')
-      .select('glofox_member_id, status, membership_start_date')
-      .eq('branch_id', branchId)
-      .eq('status', 'LEAD')
-      .gte('created_at', fromISO)
-      .lte('created_at', toISO)
+    .from('members')
+    .select('glofox_member_id, status, membership_start_date')
+    .eq('branch_id', branchId)
+    .gte('created_at', fromISO)
+    .lte('created_at', toISO)
 
     // 2. Todos los miembros del centro (para cruzar con bookings)
     const { data: allMembers } = await supabase
