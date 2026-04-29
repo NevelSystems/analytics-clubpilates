@@ -32,9 +32,10 @@ export default function Laserr({ branchId }) {
 
     // 2. Todos los miembros del centro (para cruzar con bookings)
     const { data: allMembers } = await supabase
-      .from('members')
-      .select('glofox_member_id, status, membership_start_date')
-      .eq('branch_id', branchId)
+    .from('members')
+    .select('glofox_member_id, status, membership_start_date')
+    .eq('branch_id', branchId)
+    .limit(10000)
 
     // 3. Bookings de clases intro del centro en el rango
     const { data: bookings } = await supabase
@@ -72,7 +73,7 @@ export default function Laserr({ branchId }) {
     let noCompraron = 0
 
     console.log('asistidosIds:', asistidosIds)
-asistidosIds.forEach(uid => console.log(uid, '->', membersMap[uid]?.status))
+    asistidosIds.forEach(uid => console.log(uid, '->', membersMap[uid]?.status))
     asistidosIds.forEach(userId => {
       const member = membersMap[userId]
       if (!member || member.status === 'LEAD') {
