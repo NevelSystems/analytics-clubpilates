@@ -78,8 +78,12 @@ export default function Laserr({ branchId }) {
         return
       }
       const booking = asistidosBookings.find(b => b.user_id === userId)
-      const claseDate = booking ? new Date(booking.time_start).toDateString() : null
-      const compraDate = member.membership_start_date ? new Date(member.membership_start_date).toDateString() : null
+      const toMadridDate = (iso) => {
+        const d = new Date(iso)
+        return new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Madrid' })).toDateString()
+      }
+      const claseDate = booking ? toMadridDate(booking.time_start) : null
+      const compraDate = member.membership_start_date ? toMadridDate(member.membership_start_date) : null
 
       if (claseDate && compraDate && claseDate === compraDate) {
         compraronEnMomento++
