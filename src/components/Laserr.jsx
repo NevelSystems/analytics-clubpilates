@@ -57,7 +57,7 @@ export default function Laserr({ branchId }) {
         .select('glofox_member_id, status, membership_type, membership_start_date')
         .in('glofox_member_id', bookingUserIds)
         .eq('branch_id', branchId)
-        .neq('membership_type', 'payg')
+        .or('membership_type.neq.payg,membership_type.is.null')
 
       if (bookingMembers) {
         bookingMembers.forEach(m => { membersMap[m.glofox_member_id] = m })
@@ -72,7 +72,7 @@ export default function Laserr({ branchId }) {
         .select('glofox_member_id')
         .eq('branch_id', branchId)
         .eq('status', 'MEMBER')
-        .neq('membership_type', 'payg')
+        .or('membership_type.neq.payg,membership_type.is.null')
         .in('glofox_member_id', leadIds)
         .not('glofox_member_id', 'in', `(${bookingUserIds.length > 0 ? bookingUserIds.join(',') : 'null'})`)
 
