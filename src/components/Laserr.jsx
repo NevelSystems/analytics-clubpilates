@@ -54,16 +54,17 @@ export default function Laserr({ branchId }) {
     if (bookingUserIds.length > 0) {
       const { data: bookingMembers } = await supabase
         .from('members')
-        .select('glofox_member_id, status, membership_start_date')
+        .select('glofox_member_id, status, membership_type, membership_start_date')
         .in('glofox_member_id', bookingUserIds)
         .eq('branch_id', branchId)
+        .neq('membership_type', 'payg')
 
       if (bookingMembers) {
         bookingMembers.forEach(m => { membersMap[m.glofox_member_id] = m })
       }
     }
 
-    // Leads del período que son MEMBER y NO tienen booking en intro
+    // Leads del período que son MEMBER, no payg, y NO tienen booking en intro
     let sinIntro = 0
     if (leadIds.length > 0) {
       const { data: miembrosSinIntro } = await supabase
@@ -71,6 +72,7 @@ export default function Laserr({ branchId }) {
         .select('glofox_member_id')
         .eq('branch_id', branchId)
         .eq('status', 'MEMBER')
+        .neq('membership_type', 'payg')
         .in('glofox_member_id', leadIds)
         .not('glofox_member_id', 'in', `(${bookingUserIds.length > 0 ? bookingUserIds.join(',') : 'null'})`)
 
