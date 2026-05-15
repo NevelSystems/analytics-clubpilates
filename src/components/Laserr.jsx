@@ -10,11 +10,23 @@ const toMadridDate = (iso) => {
   return new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Madrid' })).toDateString()
 }
 
+const formatDate = (iso) => {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+const membershipLabel = (type) => {
+  if (type === 'time_classes') return 'Suscripción recurrente'
+  if (type === 'num_classes') return 'Pack de clases'
+  return type || '—'
+}
+
 export default function Laserr({ branchId }) {
   const [dateFrom, setDateFrom] = useState(firstOfMonth)
   const [dateTo, setDateTo] = useState(todayStr)
   const [loading, setLoading] = useState(false)
   const [stats, setStats] = useState(null)
+  const [modal, setModal] = useState(null) // { title, people }
 
   useEffect(() => {
     if (branchId) fetchData()
@@ -29,7 +41,7 @@ export default function Laserr({ branchId }) {
 
     const { data: leads } = await supabase
       .from('members')
-      .select('glofox_member_id')
+      .select('glofox_member_id, name, email, created_at')
       .eq('branch_id', branchId)
       .gte('created_at', fromISO)
       .lte('created_at', toISO)
@@ -47,6 +59,8 @@ export default function Laserr({ branchId }) {
     }
 
     const leadIds = leads.map(l => l.glofox_member_id)
+    const leadsMap = {}
+    leads.forEach(l => { leadsMap[l.glofox_member_id] = l })
 
     const asistidosBookings = bookings.filter(b => b.attended === true)
     const asistidosIds = [...new Set(asistidosBookings.map(b => b.user_id))]
@@ -55,7 +69,7 @@ export default function Laserr({ branchId }) {
     if (asistidosIds.length > 0) {
       const { data: bookingMembers } = await supabase
         .from('members')
-        .select('glofox_member_id, status, membership_type, membership_start_date')
+        .select('glofox_member_id, name, email, created_at, status, membership_type, membership_start_date')
         .in('glofox_member_id', asistidosIds)
         .eq('branch_id', branchId)
         .neq('membership_type', 'payg')
@@ -66,11 +80,11 @@ export default function Laserr({ branchId }) {
       }
     }
 
-    let sinIntro = 0
+    let sinIntroList = []
     if (leadIds.length > 0) {
       const { data: miembrosSinIntro } = await supabase
         .from('members')
-        .select('glofox_member_id')
+        .select('glofox_member_id, name, email, created_at, membership_type, membership_start_date')
         .eq('branch_id', branchId)
         .eq('status', 'MEMBER')
         .neq('membership_type', 'payg')
@@ -78,40 +92,57 @@ export default function Laserr({ branchId }) {
         .in('glofox_member_id', leadIds)
         .not('glofox_member_id', 'in', `(${asistidosIds.length > 0 ? asistidosIds.join(',') : 'null'})`)
 
-      sinIntro = miembrosSinIntro?.length ?? 0
+      sinIntroList = miembrosSinIntro ?? []
     }
 
     const apuntadosIds = [...new Set(bookings.map(b => b.user_id))]
 
-    let compraronEnMomento = 0
-    let compraronDespues = 0
-    let noCompraron = 0
+    let compraronEnMomentoList = []
+    let compraronDespuesList = []
+    let noCompraronList = []
 
     asistidosIds.forEach(userId => {
       const member = membersMap[userId]
+      const lead = leadsMap[userId]
+      const booking = asistidosBookings.find(b => b.user_id === userId)
+      const person = {
+        name: member?.name || lead?.name || '—',
+        email: member?.email || lead?.email || '—',
+        created_at: lead?.created_at || member?.created_at,
+        membership_type: member?.membership_type,
+        membership_start_date: member?.membership_start_date,
+      }
+
       if (!member || member.status !== 'MEMBER') {
-        noCompraron++
+        noCompraronList.push(person)
         return
       }
-      const booking = asistidosBookings.find(b => b.user_id === userId)
+
       const claseDate = booking ? toMadridDate(booking.time_start) : null
       const compraDate = member.membership_start_date ? toMadridDate(member.membership_start_date) : null
 
       if (claseDate && compraDate && claseDate === compraDate) {
-        compraronEnMomento++
+        compraronEnMomentoList.push(person)
       } else {
-        compraronDespues++
+        compraronDespuesList.push(person)
       }
     })
 
     setStats({
       leads: leads.length,
+      leadsList: leads,
       apuntados: apuntadosIds.length,
+      apuntadosList: apuntadosIds.map(id => leadsMap[id]).filter(Boolean),
       asistidos: asistidosIds.length,
-      compraronEnMomento,
-      compraronDespues,
-      noCompraron,
-      sinIntro,
+      asistidosList: asistidosIds.map(id => leadsMap[id] || membersMap[id]).filter(Boolean),
+      compraronEnMomento: compraronEnMomentoList.length,
+      compraronEnMomentoList,
+      compraronDespues: compraronDespuesList.length,
+      compraronDespuesList,
+      noCompraron: noCompraronList.length,
+      noCompraronList,
+      sinIntro: sinIntroList.length,
+      sinIntroList,
     })
 
     setLoading(false)
@@ -123,13 +154,13 @@ export default function Laserr({ branchId }) {
   }
 
   const steps = stats ? [
-    { label: 'Leads totales', value: stats.leads, pct: null, color: 'bg-blue-500', desc: 'Nuevos leads en el período' },
-    { label: 'Apuntados a intro', value: stats.apuntados, pct: pct(stats.apuntados, stats.leads), color: 'bg-indigo-500', desc: 'Reservaron clase de introducción' },
-    { label: 'Asistieron', value: stats.asistidos, pct: pct(stats.asistidos, stats.apuntados), color: 'bg-violet-500', desc: 'Asistieron a la clase' },
-    { label: 'Compraron en el momento', value: stats.compraronEnMomento, pct: pct(stats.compraronEnMomento, stats.asistidos), color: 'bg-green-500', desc: 'Membresía el mismo día de la clase' },
-    { label: 'Compraron después', value: stats.compraronDespues, pct: pct(stats.compraronDespues, stats.asistidos), color: 'bg-emerald-400', desc: 'Membresía en días posteriores' },
-    { label: 'No compraron', value: stats.noCompraron, pct: pct(stats.noCompraron, stats.asistidos), color: 'bg-red-500', desc: 'Asistieron pero no compraron membresía' },
-    { label: 'Nuevos miembros sin intro', value: stats.sinIntro, pct: pct(stats.sinIntro, stats.leads), color: 'bg-amber-500', desc: 'Compraron directamente sin pasar por clase intro' },
+    { label: 'Leads totales', value: stats.leads, pct: null, color: 'bg-blue-500', desc: 'Nuevos leads en el período', list: stats.leadsList },
+    { label: 'Apuntados a intro', value: stats.apuntados, pct: pct(stats.apuntados, stats.leads), color: 'bg-indigo-500', desc: 'Reservaron clase de introducción', list: stats.apuntadosList },
+    { label: 'Asistieron', value: stats.asistidos, pct: pct(stats.asistidos, stats.apuntados), color: 'bg-violet-500', desc: 'Asistieron a la clase', list: stats.asistidosList },
+    { label: 'Compraron en el momento', value: stats.compraronEnMomento, pct: pct(stats.compraronEnMomento, stats.asistidos), color: 'bg-green-500', desc: 'Membresía el mismo día de la clase', list: stats.compraronEnMomentoList },
+    { label: 'Compraron después', value: stats.compraronDespues, pct: pct(stats.compraronDespues, stats.asistidos), color: 'bg-emerald-400', desc: 'Membresía en días posteriores', list: stats.compraronDespuesList },
+    { label: 'No compraron', value: stats.noCompraron, pct: pct(stats.noCompraron, stats.asistidos), color: 'bg-red-500', desc: 'Asistieron pero no compraron membresía', list: stats.noCompraronList },
+    { label: 'Nuevos miembros sin intro', value: stats.sinIntro, pct: pct(stats.sinIntro, stats.leads), color: 'bg-amber-500', desc: 'Compraron directamente sin pasar por clase intro', list: stats.sinIntroList },
   ] : []
 
   const maxVal = stats ? Math.max(stats.leads, 1) : 1
@@ -180,7 +211,11 @@ export default function Laserr({ branchId }) {
       {!loading && stats && (
         <div className="space-y-3">
           {steps.map((step, i) => (
-            <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <div
+              key={i}
+              onClick={() => step.list?.length > 0 && setModal({ title: step.label, people: step.list })}
+              className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${step.list?.length > 0 ? 'cursor-pointer hover:border-gray-600 transition-colors' : ''}`}
+            >
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <span className="text-sm font-medium text-white">{step.label}</span>
@@ -233,6 +268,56 @@ export default function Laserr({ branchId }) {
       {!loading && !stats && (
         <div className="text-center py-20 text-gray-500">
           Selecciona un rango de fechas y pulsa Aplicar
+        </div>
+      )}
+
+      {/* Modal */}
+      {modal && (
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4"
+          onClick={() => setModal(null)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+              <h3 className="text-white font-semibold">{modal.title}</h3>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400">{modal.people.length} personas</span>
+                <button
+                  onClick={() => setModal(null)}
+                  className="text-gray-400 hover:text-white transition-colors text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gray-900 border-b border-gray-800">
+                  <tr>
+                    <th className="text-left text-xs text-gray-500 font-medium px-6 py-3">Nombre</th>
+                    <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Email</th>
+                    <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Alta</th>
+                    <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Membresía</th>
+                    <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Compra</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modal.people.map((p, i) => (
+                    <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                      <td className="px-6 py-3 text-white font-medium">{p.name || '—'}</td>
+                      <td className="px-4 py-3 text-gray-400">{p.email || '—'}</td>
+                      <td className="px-4 py-3 text-gray-400">{formatDate(p.created_at)}</td>
+                      <td className="px-4 py-3 text-gray-400">{p.membership_type ? membershipLabel(p.membership_type) : '—'}</td>
+                      <td className="px-4 py-3 text-gray-400">{formatDate(p.membership_start_date)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>
