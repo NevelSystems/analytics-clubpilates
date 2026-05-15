@@ -17,7 +17,9 @@ const formatDate = (iso) => {
 
 const membershipLabel = (type) => {
   if (type === 'time_classes') return 'Suscripción recurrente'
+  if (type === 'time') return 'Suscripción recurrente'
   if (type === 'num_classes') return 'Pack de clases'
+  if (type === 'payg') return 'Pago por clase'
   return type || '—'
 }
 
